@@ -1,12 +1,26 @@
 import {useLoaderData} from '@remix-run/react';
 import {json} from '@shopify/remix-oxygen';
-import {MediaFile} from '@shopify/hydrogen-react';
+// import {MediaFile} from '@shopify/hydrogen-react';
+import ProductOptions from '~/components/ProductOptions';
+import {MediaFile, Money, ShopPayButton} from '@shopify/hydrogen-react';
+import {useMatches, useFetcher} from '@remix-run/react';
 
-export async function loader({params, context}) {
+
+export async function loader({params, context, request}) {
+    const storeDomain = context.storefront.getShopifyDomain();
     const {handle} = params;
+    const searchParams = new URL(request.url).searchParams;
+    const selectedOptions = [];
+  
+    // set selected options from the query string
+    searchParams.forEach((value, name) => {
+      selectedOptions.push({name, value});
+    });
+  
     const {product} = await context.storefront.query(PRODUCT_QUERY, {
       variables: {
         handle,
+        selectedOptions,
       },
     });
   
@@ -14,14 +28,18 @@ export async function loader({params, context}) {
       throw new Response(null, {status: 404});
     }
   
-    return json({
-      handle,
-      product,
-    });
-  };
+    const selectedVariant =
+  product.selectedVariant ?? product?.variants?.nodes[0];
+  return json({
+    product,
+    selectedVariant,
+    storeDomain,
+  });
+  }
 
   export default function ProductHandle() {
-    const {product} = useLoaderData();
+    const {product, selectedVariant, storeDomain} = useLoaderData();
+    const orderable = selectedVariant?.availableForSale || false;
   
     return (
       <section className="w-full gap-4 md:gap-8 grid px-6 md:px-8 lg:px-12">
@@ -40,7 +58,37 @@ export async function loader({params, context}) {
                 {product.vendor}
               </span>
             </div>
-            <h3>Product Options TODO</h3>
+            <ProductOptions
+  options={product.options}
+  selectedVariant={selectedVariant}
+/>
+<ProductOptions
+  options={product.options}
+  selectedVariant={selectedVariant}
+/>
+<Money
+  withoutTrailingZeros
+  data={selectedVariant.price}
+  className="text-xl font-semibold mb-2"
+/>
+{orderable && (
+    <div className="space-y-2">
+    <ShopPayButton
+      storeDomain={storeDomain}
+      variantIds={[selectedVariant?.id]}
+      width={'400px'}
+    />
+    <ProductForm variantId={selectedVariant?.id} />
+  </div>
+  
+)}
+            {/* <p>Selected Variant: {product.selectedVariant?.id}</p> */}
+<div
+  className="prose border-t border-gray-200 pt-6 text-black text-md"
+  dangerouslySetInnerHTML={{ __html: product.descriptionHtml }}
+/>
+
+
             <div
               className="prose border-t border-gray-200 pt-6 text-black text-md"
               dangerouslySetInnerHTML={{ __html: product.descriptionHtml }}
@@ -118,8 +166,31 @@ function PrintJson({data}) {
     );
   }
 
+  function ProductForm({variantId}) {
+    const [root] = useMatches();
+    const selectedLocale = root?.data?.selectedLocale;
+    const fetcher = useFetcher();
+  
+    const lines = [{merchandiseId: variantId, quantity: 1}];
+  
+    return (
+      <fetcher.Form action="/cart" method="post">
+        <input type="hidden" name="cartAction" value={'ADD_TO_CART'} />
+        <input
+          type="hidden"
+          name="countryCode"
+          value={selectedLocale?.country ?? 'US'}
+        />
+        <input type="hidden" name="lines" value={JSON.stringify(lines)} />
+        <button className="bg-black text-white px-6 py-3 w-full rounded-md text-center font-medium max-w-[400px]">
+          Add to Bag
+        </button>
+      </fetcher.Form>
+    );
+  }
+  
   const PRODUCT_QUERY = `#graphql
-  query product($handle: String!) {
+  query product($handle: String!, $selectedOptions: [SelectedOptionInput!]!) {
     product(handle: $handle) {
       id
       title
@@ -151,6 +222,58 @@ function PrintJson({data}) {
       options {
         name,
         values
+      }
+      selectedVariant: variantBySelectedOptions(selectedOptions: $selectedOptions) {
+        id
+        availableForSale
+        selectedOptions {
+          name
+          value
+        }
+        image {
+          id
+          url
+          altText
+          width
+          height
+        }
+        price {
+          amount
+          currencyCode
+        }
+        compareAtPrice {
+          amount
+          currencyCode
+        }
+        sku
+        title
+        unitPrice {
+          amount
+          currencyCode
+        }
+        product {
+          title
+          handle
+        }
+      }
+      variants(first: 1) {
+        nodes {
+          id
+          title
+          availableForSale
+          price {
+            currencyCode
+            amount
+          }
+          compareAtPrice {
+            currencyCode
+            amount
+          }
+          selectedOptions {
+            name
+            value
+          }
+        }
       }
     }
   }

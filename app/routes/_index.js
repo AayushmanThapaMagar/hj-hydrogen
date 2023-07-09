@@ -3,8 +3,8 @@ import {Image} from '@shopify/hydrogen';
 
 export function meta() {
   return [
-    {title: 'Hydrogen'},
-    {description: 'A custom storefront powered by Hydrogen'},
+    {title: 'Honey Journey | Buy Honey Online'},
+    {description: 'Buy Mad Honey Online from Nepal.'},
   ];
 }
 
